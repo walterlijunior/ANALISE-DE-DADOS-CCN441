@@ -1,0 +1,275 @@
+---
+title: "Análise Exploratória do Índice de Atividade Econômica do Banco Central (IBC-Br)"
+author: "Seu nome"
+date: "06 de abril de 2025"
+output: 
+  pdf_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# 1. Introdução
+
+
+
+
+# 2. Configuração do Ambiente
+
+Primeiro, vamos instalar e carregar os pacotes necessários para nossa análise.
+
+```{r pacotes}
+# Verificar e instalar pacotes se necessário
+if (!require("tidyverse")) install.packages("tidyverse")
+if (!require("lubridate")) install.packages("lubridate")
+if (!require("ggplot2")) install.packages("ggplot2")
+
+# Carregar os pacotes
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+```
+
+# 3. Importação e Preparação dos Dados
+
+## 3.1 Download e Importação
+
+Vamos baixar os dados do IBC-Br diretamente da API do Banco Central do Brasil e importá-los para o R.
+
+```{r download_dados}
+# URL da API para IBC-Br (código 24363)
+url_ibcbr <- "https://api.bcb.gov.br/dados/serie/bcdata.sgs.24363/dados?formato=csv"
+
+# Download do arquivo
+download.file(url_ibcbr, "ibcbr.csv")
+
+# Importação dos dados
+dados_ibcbr <- read.delim2("ibcbr.csv", 
+                          header = TRUE, 
+                          sep = ";", 
+                          dec = ",")
+
+# Visualizar as primeiras linhas dos dados importados
+head(dados_ibcbr)
+```
+
+## 3.2 Preparação dos Dados
+
+Agora, vamos converter as colunas para os formatos corretos.
+
+```{r preparacao_dados}
+# Verificar a estrutura inicial dos dados
+glimpse(dados_ibcbr)
+
+# Converter coluna de data para o formato correto com lubridate
+dados_ibcbr <- dados_ibcbr %>%
+  mutate(data = dmy(data),
+         valor = as.numeric(valor))
+
+# Verificar a estrutura após as conversões
+glimpse(dados_ibcbr)
+
+# Verificar se há valores ausentes
+sum(is.na(dados_ibcbr$data))
+sum(is.na(dados_ibcbr$valor))
+
+# Resumo estatístico dos dados
+summary(dados_ibcbr)
+```
+
+# 4. Análise Exploratória
+
+## 4.1 Filtragem dos Dados
+
+Vamos filtrar os dados para obter apenas o período a partir de 2010 (pode ser por ouro periodo, nesse caso é um exemplo).
+
+```{r filtragem}
+# Filtrar dados a partir de 2010
+dados_filtrados <- dados_ibcbr %>%
+  filter(data >= ymd("2010-01-01"))
+
+# Verificar o intervalo de datas após a filtragem
+min(dados_filtrados$data)
+max(dados_filtrados$data)
+
+# Verificar número de observações
+nrow(dados_filtrados)
+```
+
+## 4.2 Estatísticas Descritivas
+
+Vamos analisar estatísticas descritivas dos valores do IBC-Br para o período filtrado.
+
+```{r estatisticas}
+# Resumo estatístico
+summary(dados_filtrados$valor)
+
+# Calcular estatísticas por ano
+estatisticas_anuais <- dados_filtrados %>%
+  mutate(ano = year(data)) %>%
+  group_by(ano) %>%
+  summarise(
+    media = mean(valor, na.rm = TRUE),
+    mediana = median(valor, na.rm = TRUE),
+    desvio_padrao = sd(valor, na.rm = TRUE),
+    minimo = min(valor, na.rm = TRUE),
+    maximo = max(valor, na.rm = TRUE)
+  )
+
+# Exibir estatísticas anuais
+estatisticas_anuais
+```
+
+# 5. Visualização
+
+## 5.1 Histograma
+
+Vamos criar um histograma para visualizar a distribuição dos valores do IBC-Br.
+
+```{r histograma}
+# Criar histograma
+histograma <- ggplot(dados_filtrados, aes(x = valor)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "black") +
+  labs(
+    title = "Distribuição do Índice de Atividade Econômica (IBC-Br)",
+    x = "Valor do Índice",
+    y = "Frequência"
+  ) +
+  theme_minimal()
+
+# Exibir o histograma
+histograma
+```
+
+## 5.2 Gráfico de Linhas da Série Temporal
+
+Agora, vamos criar um gráfico de linhas para visualizar a evolução do IBC-Br ao longo do tempo.
+
+```{r grafico_linha}
+# Criar gráfico de linhas
+grafico_linha <- ggplot(dados_filtrados, aes(x = data, y = valor)) +
+  geom_line(color = "blue", size = 1.2) +
+  geom_point(color = "darkblue", size = 1) +
+  labs(
+    title = "Evolução do Índice de Atividade Econômica do Banco Central (IBC-Br)",
+    subtitle = "Período: 2010 - 2024",
+    x = "Data",
+    y = "Valor do Índice"
+  ) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+# Exibir o gráfico de linhas
+grafico_linha
+```
+
+## 5.3 Análise de Tendência Anual
+
+Vamos criar um gráfico que mostra a média anual do IBC-Br.
+
+```{r tendencia_anual}
+# Calcular médias anuais
+medias_anuais <- dados_filtrados %>%
+  mutate(ano = year(data)) %>%
+  group_by(ano) %>%
+  summarise(media_valor = mean(valor, na.rm = TRUE))
+
+# Criar gráfico de barras com médias anuais
+grafico_anual <- ggplot(medias_anuais, aes(x = factor(ano), y = media_valor)) +
+  geom_bar(stat = "identity", fill = "darkgreen", width = 0.7) +
+  geom_text(aes(label = round(media_valor, 1)), vjust = -0.5, size = 3) +
+  labs(
+    title = "Média Anual do IBC-Br",
+    x = "Ano",
+    y = "Valor Médio do Índice"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Exibir o gráfico de médias anuais
+grafico_anual
+```
+
+## 5.4 Análise de Sazonalidade
+
+Vamos examinar se há padrões sazonais nos dados.
+
+```{r sazonalidade}
+# Adicionar colunas de mês e ano
+dados_sazonais <- dados_filtrados %>%
+  mutate(
+    ano = year(data),
+    mes = month(data, label = TRUE)
+  )
+
+# Criar gráfico de sazonalidade (médias mensais)
+grafico_sazonalidade <- dados_sazonais %>%
+  group_by(mes) %>%
+  summarise(media_valor = mean(valor, na.rm = TRUE)) %>%
+  ggplot(aes(x = mes, y = media_valor, group = 1)) +
+  geom_line(color = "purple", size = 1.2) +
+  geom_point(color = "purple", size = 2) +
+  labs(
+    title = "Padrão Sazonal do IBC-Br",
+    subtitle = "Média mensal para o período 2010-2024",
+    x = "Mês",
+    y = "Valor Médio do Índice"
+  ) +
+  theme_minimal()
+
+# Exibir o gráfico de sazonalidade
+grafico_sazonalidade
+```
+
+# 6. Exportação dos Gráficos
+
+Vamos salvar os gráficos criados em formato de alta qualidade.
+
+```{r exportacao, eval=FALSE}
+# Salvar o gráfico de linhas da série temporal
+ggsave(
+  "grafico_serie_ibcbr.png",
+  plot = grafico_linha,
+  width = 10,
+  height = 5,
+  dpi = 300
+)
+
+# Salvar o histograma
+ggsave(
+  "histograma_ibcbr.png",
+  plot = histograma,
+  width = 8,
+  height = 5,
+  dpi = 300
+)
+
+# Salvar o gráfico de tendência anual
+ggsave(
+  "tendencia_anual_ibcbr.png",
+  plot = grafico_anual,
+  width = 8,
+  height = 5,
+  dpi = 300
+)
+
+# Salvar o gráfico de sazonalidade
+ggsave(
+  "sazonalidade_ibcbr.png",
+  plot = grafico_sazonalidade,
+  width = 8,
+  height = 5,
+  dpi = 300
+)
+```
+
+# 7. Conclusão
+
