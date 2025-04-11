@@ -1,7 +1,7 @@
 ---
 title: "Análise Exploratória do Índice de Atividade Econômica do Banco Central (IBC-Br)"
-author: "Seu nome"
-date: "06 de abril de 2025"
+author: "Walterli G. A. Silva Júnior"
+date: "05 de abril de 2025"
 output: 
   pdf_document:
     toc: true
@@ -14,12 +14,14 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 # 1. Introdução
 
+O Índice de Atividade Econômica do Banco Central (IBC-Br) é um indicador que antecipa o comportamento do Produto Interno Bruto (PIB) brasileiro,divulado desde de março de 2010, sendo amplamente utilizado por analistas econômicos e formuladores de políticas públicas (BANCO CENTRAL, 2010). Neste relatório, realizamos uma análise exploratória da série histórica do IBC-Br a partir do ano de 2010, com o objetivo de compreender sua evolução, padrões sazonais e principais estatísticas descritivas. A análise inclui visualizações interativas que facilitam a interpretação dos dados e identificam tendências relevantes no desempenho da economia brasileira.
+
 
 
 
 # 2. Configuração do Ambiente
 
-Primeiro, vamos instalar e carregar os pacotes necessários para nossa análise.
+Primeiro, instalar e carregar os pacotes necessários para nossa análise.
 
 ```{r pacotes}
 # Verificar e instalar pacotes se necessário
@@ -37,7 +39,7 @@ library(ggplot2)
 
 ## 3.1 Download e Importação
 
-Vamos baixar os dados do IBC-Br diretamente da API do Banco Central do Brasil e importá-los para o R.
+Baixando os dados do IBC-Br diretamente da API do Banco Central do Brasil e importá-los para o R.
 
 ```{r download_dados}
 # URL da API para IBC-Br (código 24363)
@@ -58,7 +60,7 @@ head(dados_ibcbr)
 
 ## 3.2 Preparação dos Dados
 
-Agora, vamos converter as colunas para os formatos corretos.
+Convertendo as colunas para os formatos corretos.
 
 ```{r preparacao_dados}
 # Verificar a estrutura inicial dos dados
@@ -69,7 +71,7 @@ dados_ibcbr <- dados_ibcbr %>%
   mutate(data = dmy(data),
          valor = as.numeric(valor))
 
-# Verificar a estrutura após as conversões
+# Verificação da estrutura após as conversões
 glimpse(dados_ibcbr)
 
 # Verificar se há valores ausentes
@@ -82,9 +84,11 @@ summary(dados_ibcbr)
 
 # 4. Análise Exploratória
 
+A análise exploratória de dados é uma etapa fundamental utilizada para examinar e investigar conjuntos de dados, permitindo resumir suas principais características com o apoio de técnicas de visualização.
+
 ## 4.1 Filtragem dos Dados
 
-Vamos filtrar os dados para obter apenas o período a partir de 2010 (pode ser por ouro periodo, nesse caso é um exemplo).
+Filtrando os dados para obter apenas o período a partir de 2010.
 
 ```{r filtragem}
 # Filtrar dados a partir de 2010
@@ -101,7 +105,7 @@ nrow(dados_filtrados)
 
 ## 4.2 Estatísticas Descritivas
 
-Vamos analisar estatísticas descritivas dos valores do IBC-Br para o período filtrado.
+ Estatísticas descritivas dos valores do IBC-Br para o período filtrado.
 
 ```{r estatisticas}
 # Resumo estatístico
@@ -127,7 +131,10 @@ estatisticas_anuais
 
 ## 5.1 Histograma
 
-Vamos criar um histograma para visualizar a distribuição dos valores do IBC-Br.
+Criando um histograma para visualizar a distribuição dos valores do IBC-Br. 
+O histograma mostra a distribuição da série IBC-Br, permitindo verificar assimetrias, concentração de valores e possíveis outliers.  
+
+
 
 ```{r histograma}
 # Criar histograma
@@ -144,9 +151,32 @@ histograma <- ggplot(dados_filtrados, aes(x = valor)) +
 histograma
 ```
 
+
+```{r}
+# Histograma com curva de densidade
+histograma <- ggplot(dados_filtrados, aes(x = valor)) +
+  geom_histogram(aes(y = ..density..), bins = 30, fill = "steelblue", color = "black", alpha = 0.7) +
+  geom_density(color = "darkred", linewidth = 1) +
+  labs(
+    title = "Distribuição do Índice de Atividade Econômica (IBC-Br)",
+    x = "Valor do Índice",
+    y = "Densidade"
+  ) +
+  theme_minimal()
+
+# Exibir o histograma
+histograma
+```
+
+
+
+A economia brasileira, de acordo com o IBC-Br, geralmente se manteve na faixa entre 135 e 145, indicando que passou a maior parte do tempo nessas faixas. Há uma leve assimetria à direita, com uma cauda se estendendo até valores maiores (150-160), o que faz sugerir que em alguns períodos houve um pico de atividade econômica, embora menos frequente, o histograma indica uma certa estabilidade com eventuais flutuações.
+
 ## 5.2 Gráfico de Linhas da Série Temporal
 
-Agora, vamos criar um gráfico de linhas para visualizar a evolução do IBC-Br ao longo do tempo.
+Gerando gráfico de linhas para visualizar a evolução do IBC-Br ao longo do tempo.
+
+**Esse gráfico irá mostrar a evolução temporal do IBC-Br entre os anos de 2010 até inicio de 2025.**
 
 ```{r grafico_linha}
 # Criar gráfico de linhas
@@ -155,7 +185,7 @@ grafico_linha <- ggplot(dados_filtrados, aes(x = data, y = valor)) +
   geom_point(color = "darkblue", size = 1) +
   labs(
     title = "Evolução do Índice de Atividade Econômica do Banco Central (IBC-Br)",
-    subtitle = "Período: 2010 - 2024",
+    subtitle = "Período: 2010 - 2025",
     x = "Data",
     y = "Valor do Índice"
   ) +
@@ -171,9 +201,15 @@ grafico_linha <- ggplot(dados_filtrados, aes(x = data, y = valor)) +
 grafico_linha
 ```
 
+Ao visualizar o resultado dos dados apresentado no gráfico, revela que há ciclos econômicos claros, teve uma expansão entre os anos de 2010 a 2014, uma recessão de 2015 a 2016, uma lenta recuperação a partir de 2017 até 2019, em 2020 uma situação crítica, depois nos anos posteriores houve uma lenta recuperação com instabilidade. Nota-se que a tendência mais recente (2023-2024) aponta para um nível alto do índice, mas com instabilidade.
+
+
 ## 5.3 Análise de Tendência Anual
 
-Vamos criar um gráfico que mostra a média anual do IBC-Br.
+* Gráfico que mostra a média anual do IBC-Br.
+
+Esse gráfico apresenta a média anual do Índice de Atividade Econômica do Banco Central (IBC-Br) entre os anos de 2010 a 2025. A análise da média anual ajuda a suavizar as flutuações mensais e permite observar melhor tendências macroeconômicas ao longo do tempo.
+
 
 ```{r tendencia_anual}
 # Calcular médias anuais
@@ -198,9 +234,34 @@ grafico_anual <- ggplot(medias_anuais, aes(x = factor(ano), y = media_valor)) +
 grafico_anual
 ```
 
+**Conclusões obtidas**
+
+* Período de Crescimento Econômico (2010–2013):
+
+O índice médio anual sobe de 137,1 em 2010 para 146,8 em 2013, atingindo seu primeiro pico. Indica um período de forte expansão econômica, impulsionado pelo consumo interno, crescimento do crédito e cenário internacional favorável.
+ 
+* Queda na Atividade Econômica (2014–2016):
+
+A partir de 2014, há uma reversão da tendência, com a média caindo de 146,4 (2014) para 134,3 (2015) e 135,5 (2016). Esse período em termo de economia marca a recessão econômica brasileira, com retração do PIB, aumento do desemprego e crise política.
+
+* Estabilização e Lenta Recuperação (2017–2019):
+
+Entre 2017 e 2019, o índice mantém relativa estabilidade, com médias entre 135,5 e 138,7. Indica uma recuperação moderada, porém sem um grande crescimento.
+
+* Impacto da Pandemia (2020):
+
+O ano de 2020 foi marcado pela pandemia, o que justifica a queda do índice médio para 133,2, evidenciando o efeito da COVID-19 sobre a atividade econômica nacional. Mesmo com políticas de auxílio emergencial, o impacto negativo foi significativo.
+
+* Retomada com Força (2021–2024)e Leve Recuo em 2025 (até o momento):
+
+De 2021 a 2024, observa-se uma trajetória de recuperação consistente, e em 2025 o índice retorna a 147, abaixo do pico de 2024.
+
+
 ## 5.4 Análise de Sazonalidade
 
-Vamos examinar se há padrões sazonais nos dados.
+**Examinando se há padrões sazonais nos dados**
+
+Este gráfico mostra o padrão sazonal do Índice de Atividade Econômica do Banco Central (IBC-Br), com a média mensal dos valores entre 2010 até inicio de 2025. A análise sazonal busca identificar comportamentos recorrentes ao longo dos meses do ano, isolando efeitos do ciclo econômico geral.
 
 ```{r sazonalidade}
 # Adicionar colunas de mês e ano
@@ -210,7 +271,7 @@ dados_sazonais <- dados_filtrados %>%
     mes = month(data, label = TRUE)
   )
 
-# Criar gráfico de sazonalidade (médias mensais)
+# Gráfico de sazonalidade (médias mensais)
 grafico_sazonalidade <- dados_sazonais %>%
   group_by(mes) %>%
   summarise(media_valor = mean(valor, na.rm = TRUE)) %>%
@@ -219,7 +280,7 @@ grafico_sazonalidade <- dados_sazonais %>%
   geom_point(color = "purple", size = 2) +
   labs(
     title = "Padrão Sazonal do IBC-Br",
-    subtitle = "Média mensal para o período 2010-2024",
+    subtitle = "Média mensal para o período 2010-2025",
     x = "Mês",
     y = "Valor Médio do Índice"
   ) +
@@ -229,9 +290,41 @@ grafico_sazonalidade <- dados_sazonais %>%
 grafico_sazonalidade
 ```
 
+
+```{r}
+# Gráfico de sazonalidade que mostra padrões para cada ano
+grafico_sazonalidade_anos <- dados_sazonais %>%
+  ggplot(aes(x = mes, y = valor, group = ano, color = as.factor(ano))) +
+  geom_line() +
+  labs(
+    title = "Padrão Sazonal do IBC-Br por Ano",
+    x = "Mês",
+    y = "Valor do Índice",
+    color = "Ano"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+# Exibir o gráfico
+grafico_sazonalidade_anos
+
+```
+
+
+
+Há um pico em março, maior valor médio (145,5), pode está relacionado ao ritmo mais itenso de produção e consumo logo após o retorno das atividades plenas no pós-verão.
+
+
+Queda em abril, maio e junho, isso pode está realcionado com o fim do impulso de inicio de anos e ajustes de estoques na indústria e no comercio.
+
+Em julho e agosto, observa-se uma retomada significativa da atividade, com novos picos, nesse periodo há as férias escolares o que pode significar uma relação no turismo e maior circulação de renda.
+
+Outra queda, dessa vez no mês de setembro com uma leve retomada em outubro e terminado com um declinio em novembro e dezembro, apesar de ser fim de anos, periodo em que geralmente a população costuma a gastar mais, esses mês registram baixas. E por fim janeiro com a menor média possivelmente isso é devido ao recesso do fim de ano, férias coletivas e menor consumo das pessoas devidamento as festas de fim de ano.
+
+
 # 6. Exportação dos Gráficos
 
-Vamos salvar os gráficos criados em formato de alta qualidade.
+Salvar os gráficos criados em formato de alta qualidade.
 
 ```{r exportacao, eval=FALSE}
 # Salvar o gráfico de linhas da série temporal
@@ -271,5 +364,5 @@ ggsave(
 )
 ```
 
-# 7. Conclusão
+
 
