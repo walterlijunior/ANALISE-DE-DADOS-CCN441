@@ -1,0 +1,323 @@
+---
+title: "Identificação de Outliers na Base de Dados de Inflação e Reservas Internacionais"
+author: "Walterli Gomes de Abreu Silva Júnior"
+output:
+  pdf_document:
+    toc: true
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    fig_width: 10
+    fig_height: 6
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Introdução
+
+Este relatório visa identificar e analisar outliers nos dados de inflação e reservas internacionais do Brasil, utilizando métodos estatísticos robustos e técnicas de visualização de dados. A análise de valores atípicos é crucial para compreender distorções nas séries temporais econômicas e garantir conclusões precisas sobre as relações macroeconômicas brasileiras. Através dos métodos quantitativos que serão utilizados nesta análise: Método Boxplot, escore-Z, Método da distância de Mahalanobis e Método da distância de Cook, identificaremos anomalias estatisticamente significativas. Os outliers serão representados em gráficos de dispersão e box plots  para facilitar a interpretação visual dos padrões e desvios. O trabalho também discutirá as implicações destes valores extremos nas análises econométricas, visando resultados mais confiáveis que possam embasar decisões em política monetária e gestão de reservas internacionais.
+
+# Carregando Pacotes e Dados
+
+Primeiro, carregamos os pacotes necessários e importamos os dados do Banco Central do Brasil utilizando o pacote `rbcb`.
+
+```{r carregar_pacotes}
+# Carregando as bibliotecas necessárias
+library(rbcb)
+library(tidyverse)
+library(mvoutlier)  # Para cálculo de distância de Mahalanobis
+library(car)        # Para distância de Cook
+library(mvoutlier)
+```
+
+## Importando os dados
+
+```{r importar_dados}
+## Importar dados de inflação
+inflacao = get_series(13522, 
+                      start_date = '2010-01-01', 
+                      end_date = '2025-04-14')
+
+## Importar dados de reservas internacionais
+reservas = get_series(23043, 
+                      start_date = '2010-01-01')
+
+# Juntando os dados
+dados <- left_join(inflacao, 
+                   reservas, 
+                   by = 'date')
+
+# Ajustando os nomes das colunas
+colnames(dados) = c('data', 'inflacao', "reservas")
+
+# Removendo linhas com NA (se houver)
+dados <- dados %>% filter(!is.na(inflacao) & !is.na(reservas))
+```
+
+## Visualização inicial dos dados
+
+```{r visualizar_dados}
+# Visualizando as primeiras linhas
+head(dados)
+
+# Sumário estatístico
+summary(dados)
+
+# Gráfico de dispersão original
+ggplot(dados, aes(x = inflacao, y = reservas)) +
+  geom_point(color = "blue", alpha = 0.7) +
+  labs(title = "Gráfico de Dispersão Original",
+       x = "Inflação (%)",
+       y = "Reservas Internacionais (milhões US$)",
+       caption = "Fonte: Banco Central do Brasil") +
+  theme_minimal()
+```
+
+# Métodos de Detecção de Outliers
+
+## 1. Método do Boxplot (1,5 * IQR)
+
+Este método identifica outliers usando os limites definidos como Q1 - 1,5*IQR e Q3 + 1,5*IQR, onde Q1 é o primeiro quartil, Q3 é o terceiro quartil e IQR é a diferença entre Q3 e Q1.
+
+Os gráfico a seguir apresenta a relação entre a inflação (%) no eixo X e as reservas internacionais (em milhões de US$) no eixo Y, com dados provenientes do Banco Central (Brasil). Nesta visualização, os pontos estão classificados como outliers (vermelho) e não-outliers (azul).
+
+O gráfico de dispersão mostra diferenças claras entre os dados considerados normais e os que foram identificados como outliers, ao analisar a relação entre inflação e reservas internacionais no Brasil. A maioria dos pontos (em azul) está concentrada em um intervalo estreito, com inflação entre 2,5% e 10%, e reservas que giram de 0 a 5.000 milhões de dólares. Já os outliers (em vermelho) se espalham mais amplamente, com valores extremos que vão de -30.000 a mais de 15.000 milhões de dólares.
+
+Alguns desses outliers combinam inflação alta com reservas muito negativas, o que pode indicar períodos de crise econômica. Um dos destaques é o ponto com cerca de -30.000 milhões em reservas e inflação por volta de 5%, além de outro ponto com inflação próxima de 12% e reservas ligeiramente negativas — provavelmente um sinal de instabilidade econômica em momentos específicos.
+
+```{r boxplot}
+# Para inflação
+Q1_inflacao <- quantile(dados$inflacao, 0.25)
+Q3_inflacao <- quantile(dados$inflacao, 0.75)
+IQR_inflacao <- Q3_inflacao - Q1_inflacao
+limite_inferior_inflacao <- Q1_inflacao - 1.5 * IQR_inflacao
+limite_superior_inflacao <- Q3_inflacao + 1.5 * IQR_inflacao
+
+# Para reservas
+Q1_reservas <- quantile(dados$reservas, 0.25)
+Q3_reservas <- quantile(dados$reservas, 0.75)
+IQR_reservas <- Q3_reservas - Q1_reservas
+limite_inferior_reservas <- Q1_reservas - 1.5 * IQR_reservas
+limite_superior_reservas <- Q3_reservas + 1.5 * IQR_reservas
+
+# Identificando outliers pelo método do Boxplot
+outliers_boxplot <- dados %>%
+  mutate(is_outlier = (inflacao < limite_inferior_inflacao | 
+                       inflacao > limite_superior_inflacao |
+                       reservas < limite_inferior_reservas | 
+                       reservas > limite_superior_reservas))
+
+# Gráfico com outliers identificados
+ggplot(outliers_boxplot, aes(x = inflacao, y = reservas, color = is_outlier)) +
+  geom_point(alpha = 0.7) +
+  scale_color_manual(values = c("blue", "red")) +
+  labs(title = "Gráfico de Dispersão com Outliers Identificados (Método Boxplot)",
+       x = "Inflação (%)",
+       y = "Reservas Internacionais (milhões US$)",
+       color = "Outlier",
+       caption = "Fonte: Banco Central do Brasil") +
+  theme_minimal()
+
+# Apenas os dados sem outliers
+dados_sem_outliers_boxplot <- outliers_boxplot %>% 
+  filter(!is_outlier)
+
+# Gráfico apenas com dados sem outliers
+ggplot(dados_sem_outliers_boxplot, aes(x = inflacao, y = reservas)) +
+  geom_point(color = "blue", alpha = 0.7) +
+  labs(title = "Gráfico de Dispersão Sem Outliers (Método Boxplot)",
+       x = "Inflação (%)",
+       y = "Reservas Internacionais (milhões US$)",
+       caption = "Fonte: Banco Central do Brasil") +
+  theme_minimal()
+```
+
+
+
+## 2. Método do Z-Score
+
+Este método identifica outliers usando o Z-Score, que mede quantos desvios padrão um ponto de dados está afastado da média. Pontos com |Z| > 3 são considerados outliers.
+
+Na visualização com o método Z-Score, foram identificados apenas três outliers (em vermelho), o que mostra o caráter mais seletivo dessa abordagem. Dois deles têm valores bastante negativos de reservas: um próximo de -22.000 milhões de dólares, com inflação de cerca de 2,5%, e outro ainda mais extremo, perto de -30.000 milhões, com inflação em torno de 5%. O terceiro outlier aparece em um cenário oposto, com inflação alta (cerca de 9,5%) e reservas internacionais elevadas, acima de 10.000 milhões de dólares.
+
+Os demais pontos (em azul), considerados normais pelo método, estão espalhados em uma faixa ampla — com reservas entre -10.000 e +10.000 milhões e inflação de 2,5% a 12,5%. Isso revela que o Z-Score tende a detectar apenas os casos mais extremos.
+
+Diferente de outros métodos, o Z-Score considera apenas a distância de cada ponto em relação à média, medida em desvios-padrão. Por isso, pontos que visualmente parecem discrepantes, como os com reservas entre -5.000 e -10.000 milhões, acabam sendo classificados como normais. Isso acontece porque os próprios valores extremos inflacionam o desvio-padrão, fazendo com que os limites para definir outliers fiquem mais largos.
+
+```{r zscore}
+# Calculando o Z-score para inflação e reservas
+dados_z <- dados %>%
+  mutate(z_inflacao = scale(inflacao),
+         z_reservas = scale(reservas))
+
+# Identificando outliers pelo método Z-Score (|Z| > 3)
+outliers_zscore <- dados_z %>%
+  mutate(is_outlier = (abs(z_inflacao) > 3 | abs(z_reservas) > 3))
+
+# Gráfico com outliers identificados
+ggplot(outliers_zscore, aes(x = inflacao, y = reservas, color = is_outlier)) +
+  geom_point(alpha = 0.7) +
+  scale_color_manual(values = c("blue", "red")) +
+  labs(title = "Gráfico de Dispersão com Outliers Identificados (Método Z-Score)",
+       x = "Inflação (%)",
+       y = "Reservas Internacionais (milhões US$)",
+       color = "Outlier",
+       caption = "Fonte: Banco Central do Brasil") +
+  theme_minimal()
+
+# Apenas os dados sem outliers
+dados_sem_outliers_zscore <- outliers_zscore %>% 
+  filter(!is_outlier)
+
+# Gráfico apenas com dados sem outliers
+ggplot(dados_sem_outliers_zscore, aes(x = inflacao, y = reservas)) +
+  geom_point(color = "blue", alpha = 0.7) +
+  labs(title = "Gráfico de Dispersão Sem Outliers (Método Z-Score)",
+       x = "Inflação (%)",
+       y = "Reservas Internacionais (milhões US$)",
+       caption = "Fonte: Banco Central do Brasil") +
+  theme_minimal()
+```
+
+## 3. Método da Distância de Mahalanobis
+
+A distância de Mahalanobis leva em conta a correlação entre as variáveis, sendo útil para detectar outliers multivariados.
+
+Por este método ele identificou apenas dois outliers (em vermelho), ambos com reservas fortemente negativas: um por volta de -22.000 milhões de dólares com inflação de cerca de 2,5%, e outro ainda mais extremo, com cerca de -30.000 milhões e inflação próxima de 5%.
+
+Curiosamente, o ponto que foi considerado outlier pelo método Z-Score — com inflação alta (10%) e reservas positivas em torno de 15.000 milhões — não foi marcado como outlier aqui. Isso mostra como diferentes métodos podem produzir resultados bem distintos ao analisar os mesmos dados.
+
+Os pontos regulares (em azul) estão espalhados entre -10.000 e +15.000 milhões nas reservas, e inflação entre 2,5% e 12,5%. O Mahalanobis foi ainda mais seletivo que o Z-Score, marcando como outliers apenas os casos mais extremos de reservas negativas. Isso indica que o método levou em conta a relação entre inflação e reservas e só sinalizou como anomalias os pontos que realmente se distanciaram dessa estrutura esperada.
+
+```{r mahalanobis}
+# Preparando dados para cálculo da distância de Mahalanobis
+dados_num <- dados %>% select(inflacao, reservas)
+
+# Calculando a distância de Mahalanobis
+mah_dist <- mahalanobis(dados_num, 
+                        colMeans(dados_num), 
+                        cov(dados_num))
+
+# Convertendo para p-valor (para identificar outliers)
+p_valores <- pchisq(mah_dist, df = ncol(dados_num), lower.tail = FALSE)
+
+# Identificando outliers (p-valor < 0.001)
+outliers_mahalanobis <- dados %>%
+  mutate(dist_mahalanobis = mah_dist,
+         p_valor = p_valores,
+         is_outlier = p_valor < 0.001)
+
+# Gráfico com outliers identificados
+ggplot(outliers_mahalanobis, aes(x = inflacao, y = reservas, color = is_outlier)) +
+  geom_point(alpha = 0.7) +
+  scale_color_manual(values = c("blue", "red")) +
+  labs(title = "Gráfico de Dispersão com Outliers Identificados (Distância de Mahalanobis)",
+       x = "Inflação (%)",
+       y = "Reservas Internacionais (milhões US$)",
+       color = "Outlier",
+       caption = "Fonte: Banco Central do Brasil") +
+  theme_minimal()
+
+# Apenas os dados sem outliers
+dados_sem_outliers_mahalanobis <- outliers_mahalanobis %>% 
+  filter(!is_outlier)
+
+# Gráfico apenas com dados sem outliers
+ggplot(dados_sem_outliers_mahalanobis, aes(x = inflacao, y = reservas)) +
+  geom_point(color = "blue", alpha = 0.7) +
+  labs(title = "Gráfico de Dispersão Sem Outliers (Distância de Mahalanobis)",
+       x = "Inflação (%)",
+       y = "Reservas Internacionais (milhões US$)",
+       caption = "Fonte: Banco Central do Brasil") +
+  theme_minimal()
+```
+
+## 4. Método da Distância de Cook
+
+A distância de Cook é uma medida de influência em análise de regressão, que identifica observações que afetam significativamente o modelo.
+
+Essa técnica é usada para avaliar o quanto cada ponto influencia os resultados de um modelo de regressão, e, nesse caso, foi mais sensível do que os métodos Z-Score e Mahalanobis. No total, cerca de oito pontos foram classificados como outliers (em vermelho), distribuídos em diferentes regiões do gráfico. Dois deles já haviam sido destacados anteriormente por outros métodos: um com reservas próximas a -22.000 milhões de dólares e inflação de 2,5%, e outro em torno de -30.000 milhões, com inflação perto de 5%. Além disso, chama a atenção um ponto com inflação elevada (por volta de 10%) e reservas positivas acima de 10.000 milhões, além de outros outliers com reservas entre -5.000 e -10.000 milhões, espalhados por diferentes faixas de inflação. 
+
+A sensibilidade maior da Distância de Cook se deve ao fato de que ela identifica pontos que, mesmo sem valores extremos, afetam muito o modelo estatístico. Os pontos considerados regulares (em azul) continuam concentrados em padrões esperados, mas agora com menos presença nas extremidades, já que mais observações foram consideradas influentes.
+
+```{r cook}
+# Criando um modelo de regressão linear
+modelo <- lm(reservas ~ inflacao, data = dados)
+
+# Calculando a distância de Cook
+cook_dist <- cooks.distance(modelo)
+
+# Identificando outliers pela Distância de Cook (> 4/n)
+limite_cook <- 4 / nrow(dados)
+outliers_cook <- dados %>%
+  mutate(dist_cook = cook_dist,
+         is_outlier = dist_cook > limite_cook)
+
+# Gráfico com outliers identificados
+ggplot(outliers_cook, aes(x = inflacao, y = reservas, color = is_outlier)) +
+  geom_point(alpha = 0.7) +
+  scale_color_manual(values = c("blue", "red")) +
+  labs(title = "Gráfico de Dispersão com Outliers Identificados (Distância de Cook)",
+       x = "Inflação (%)",
+       y = "Reservas Internacionais (milhões US$)",
+       color = "Outlier",
+       caption = "Fonte: Banco Central do Brasil") +
+  theme_minimal()
+
+# Apenas os dados sem outliers
+dados_sem_outliers_cook <- outliers_cook %>% 
+  filter(!is_outlier)
+
+# Gráfico apenas com dados sem outliers
+ggplot(dados_sem_outliers_cook, aes(x = inflacao, y = reservas)) +
+  geom_point(color = "blue", alpha = 0.7) +
+  labs(title = "Gráfico de Dispersão Sem Outliers (Distância de Cook)",
+       x = "Inflação (%)",
+       y = "Reservas Internacionais (milhões US$)",
+       caption = "Fonte: Banco Central do Brasil") +
+  theme_minimal()
+```
+
+# Análise Comparativa dos Métodos
+
+```{r comparacao}
+# Contagem de outliers por método
+n_total <- nrow(dados)
+n_boxplot <- sum(outliers_boxplot$is_outlier)
+n_zscore <- sum(outliers_zscore$is_outlier)
+n_mahalanobis <- sum(outliers_mahalanobis$is_outlier)
+n_cook <- sum(outliers_cook$is_outlier)
+
+# Criando um dataframe com o resumo dos resultados
+resumo_metodos <- data.frame(
+  Metodo = c("Boxplot", "Z-Score", "Mahalanobis", "Cook"),
+  N_Outliers = c(n_boxplot, n_zscore, n_mahalanobis, n_cook),
+  Percentual = c(n_boxplot/n_total, n_zscore/n_total, n_mahalanobis/n_total, n_cook/n_total) * 100
+)
+
+# Visualizando o resumo
+print(resumo_metodos)
+
+# Criando um gráfico de barras para comparar os métodos
+ggplot(resumo_metodos, aes(x = Metodo, y = N_Outliers, fill = Metodo)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(round(Percentual, 1), "%")), 
+            vjust = -0.5, color = "black", size = 3.5) +
+  labs(title = "Número de Outliers por Método",
+       x = "Método",
+       y = "Número de Outliers",
+       caption = "Fonte: Análise própria") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+# Conclusão
+
+Neste relatório, foram utilizados quatro métodos diferentes para identificar outliers na base de dados que relaciona a inflação (%) com as reservas internacionais do Brasil (em milhões de dólares): o Boxplot (1,5 * IQR), o Z-Score, a Distância de Mahalanobis e a Distância de Cook. Cada um desses métodos trouxe resultados distintos, com diferentes níveis de sensibilidade e critérios para classificar uma observação como atípica.
+
+O Boxplot, por ser uma técnica não paramétrica, marcou como outliers todos os pontos que ultrapassaram os limites do intervalo interquartil. Foi o método que mais apontou outliers — 50 observações no total, o que equivale a 27,5% dos dados — mostrando-se bastante sensível às variações nos valores. Já o Z-Score, que assume uma distribuição normal, foi mais rigoroso. Ele considera outliers os valores que se afastam mais de três desvios-padrão da média, e com isso detectou apenas três observações fora do padrão (1,6% do total).
+
+A Distância de Mahalanobis, que leva em conta a correlação entre as variáveis, se mostrou especialmente eficaz na detecção de outliers em análises multivariadas. Foi o método mais seletivo entre os quatro, identificando apenas dois casos (1,1%). Por fim, a Distância de Cook, utilizada para avaliar a influência de cada ponto em modelos de regressão, detectou oito outliers (4,4%). Esse método é interessante porque consegue captar observações que, mesmo não sendo extremas em valor, exercem um impacto relevante sobre os resultados estatísticos.De forma geral, os resultados reforçam que a escolha do método influencia diretamente a identificação de outliers e, por consequência, as interpretações que se pode fazer a partir da análise.
