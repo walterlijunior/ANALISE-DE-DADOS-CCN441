@@ -1,0 +1,820 @@
+---
+title: "Análise Avançada de Documentos em PDF"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    theme: cosmo
+    runtime: shiny
+    css: styles.css
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# Verificar e instalar pacotes necessários de forma otimizada
+packages <- c(
+  "pdftools", "tidyverse", "tidytext", "textdata", "wordcloud", 
+  "shiny", "flexdashboard", "topicmodels", "textclean", "tm", 
+  "SnowballC", "textstem", "stopwords", "DT", "plotly", 
+  "shinycssloaders", "shinydashboard", "ggwordcloud", "scales"
+)
+
+# Instalação eficiente de pacotes - evitando o uso de menu()
+for (pkg in packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    tryCatch({
+      install.packages(pkg, repos = "https://cran.r-project.org", quiet = TRUE, dependencies = TRUE)
+    }, error = function(e) {
+      message(sprintf("Falha ao instalar o pacote '%s': %s", pkg, e$message))
+    })
+  }
+}
+
+# Carregar pacotes
+invisible(lapply(packages, library, character.only = TRUE))
+
+# Inicializar listas de stopwords com cache para otimização
+stopwords_cache <- list(
+  pt = c(stopwords::stopwords("pt"), 
+         c("é", "ser", "ter", "estar", "fazer", "ir", "vir", "pois", "assim", "então")),
+  en = c(stopwords::stopwords("en"),
+         c("isn't", "don't", "doesn't", "haven't", "hasn't", "wouldn't", "couldn't"))
+)
+
+# Função segura para carregar dados de sentimentos
+safe_get_sentiments <- function(lexicon) {
+  tryCatch({
+    get_sentiments(lexicon)
+  }, error = function(e) {
+    # Caso o pacote de sentimentos não tenha sido baixado, retorna um dataframe vazio
+    message(sprintf("Erro ao carregar léxico '%s': %s", lexicon, e$message))
+    if (lexicon == "bing") {
+      return(data.frame(word = character(), sentiment = character()))
+    } else if (lexicon == "afinn") {
+      return(data.frame(word = character(), value = numeric()))
+    } else if (lexicon == "nrc") {
+      return(data.frame(word = character(), sentiment = character()))
+    }
+  })
+}
+
+# Tratamento seguro para carregamento de sentimentos, evitando menu interativo
+options(textdata.download_prompt = FALSE)
+
+# Tenta carregar os léxicos, com fallback se falhar
+tryCatch({
+  sentiment_bing <- safe_get_sentiments("bing")
+}, error = function(e) {
+  sentiment_bing <- data.frame(word = character(), sentiment = character())
+  message("Erro ao carregar léxico 'bing': ", e$message)
+})
+
+tryCatch({
+  sentiment_afinn <- safe_get_sentiments("afinn")
+}, error = function(e) {
+  sentiment_afinn <- data.frame(word = character(), value = numeric())
+  message("Erro ao carregar léxico 'afinn': ", e$message)
+})
+
+tryCatch({
+  sentiment_nrc <- safe_get_sentiments("nrc")
+}, error = function(e) {
+  sentiment_nrc <- data.frame(word = character(), sentiment = character())
+  message("Erro ao carregar léxico 'nrc': ", e$message)
+})
+
+# Função para limpar e processar texto
+process_text <- function(text, remove_stop = TRUE, language = "pt") {
+  # Remover caracteres não-ASCII
+  text <- iconv(text, to = "ASCII//TRANSLIT")
+  
+  # Tokenização e limpeza básica
+  tokens <- tibble(text = text) %>%
+    unnest_tokens(word, text) %>%
+    mutate(word = str_replace_all(word, "[^[:alnum:]]", "")) %>%
+    filter(nchar(word) > 1)
+  
+  # Remover stopwords se solicitado
+  if(remove_stop) {
+    tokens <- tokens %>% 
+      filter(!word %in% stopwords_cache[[language]])
+  }
+  
+  return(tokens)
+}
+
+# Função para extrair entidades nomeadas (simplificada)
+extract_entities <- function(text) {
+  # Padrões simples para reconhecimento de entidades
+  emails <- str_extract_all(text, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,6}\\b")
+  urls <- str_extract_all(text, "https?://[^\\s]+")
+  dates <- str_extract_all(text, "\\d{1,2}/\\d{1,2}/\\d{2,4}")
+  
+  list(
+    emails = unlist(emails),
+    urls = unlist(urls),
+    dates = unlist(dates)
+  )
+}
+```
+
+<style>
+.value-box {
+  height: 120px;
+}
+.navbar-inverse {
+  background-color: #2c3e50;
+}
+.chart-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+.shiny-input-container {
+  margin-bottom: 20px;
+}
+</style>
+
+Sidebar {.sidebar data-width=300}
+-------------------------------------
+
+### Configurações
+
+```{r}
+# Entrada de arquivo com feedback visual
+fileInput("pdf_file", "Escolha um arquivo PDF", 
+          accept = c(".pdf"), 
+          buttonLabel = "Procurar...",
+          placeholder = "Nenhum arquivo selecionado")
+
+# Opções avançadas em um painel dobrável
+tags$div(
+  style = "margin-top: 20px;",
+  tags$details(
+    tags$summary(tags$span("Opções Avançadas", style = "font-weight: bold; cursor: pointer;")),
+    tags$div(
+      style = "padding: 10px; background: #f8f9fa; border-radius: 5px; margin-top: 10px;",
+      radioButtons("lang", "Idioma do documento:", 
+                  choices = c("Português" = "pt", "Inglês" = "en"), 
+                  selected = "pt", inline = TRUE),
+      
+      checkboxInput("remove_stop", "Remover Stopwords", TRUE),
+      
+      sliderInput("word_min_freq", "Frequência mínima de palavras:", 
+                  min = 1, max = 10, value = 2, step = 1),
+      
+      sliderInput("topics_num", "Número de tópicos para LDA:", 
+                  min = 2, max = 10, value = 3, step = 1),
+      
+      selectInput("sentiment_type", "Método de análise de sentimentos:",
+                  choices = c("Bing (Binário)" = "bing", 
+                              "AFINN (Numérico)" = "afinn",
+                              "NRC (Emocional)" = "nrc"),
+                  selected = "bing")
+    )
+  )
+)
+
+# Botão de análise com cor
+actionButton("analyze_btn", "Analisar Documento", 
+             class = "btn-primary btn-lg btn-block",
+             icon = icon("chart-line"))
+
+# Área de progresso
+tags$div(
+  id = "analysis_status",
+  style = "margin-top: 15px; padding: 10px; display: none;",
+  tags$p(id = "status_text", "Analisando documento..."),
+  tags$div(class = "progress",
+    tags$div(id = "progress_bar", class = "progress-bar progress-bar-striped active", 
+             role = "progressbar", style = "width: 0%")
+  )
+)
+
+# Código JavaScript para gerenciar o progresso
+tags$script('
+$(document).ready(function() {
+  $("#analyze_btn").click(function() {
+    if($("#pdf_file").val() !== "") {
+      $("#analysis_status").show();
+      let progress = 0;
+      const interval = setInterval(function() {
+        progress += 5;
+        if(progress > 100) clearInterval(interval);
+        $("#progress_bar").css("width", progress + "%");
+        if(progress == 100) {
+          $("#status_text").text("Análise concluída!");
+          setTimeout(function() {
+            $("#analysis_status").fadeOut();
+          }, 2000);
+        }
+      }, 200);
+    }
+  });
+});
+')
+
+# Rodapé informativo
+tags$div(
+  style = "position: absolute; bottom: 10px; left: 10px; right: 10px; font-size: 0.8em; color: #777;",
+  tags$p("Esta ferramenta utiliza R e Shiny para análise de texto em documentos PDF.")
+)
+```
+
+```{r, context="server"}
+# Variáveis reativas para armazenar dados processados
+text_data <- reactiveVal(NULL)
+processed_tokens <- reactiveVal(NULL)
+sentiment_data <- reactiveVal(NULL)
+entity_data <- reactiveVal(NULL)
+topic_model <- reactiveVal(NULL)
+
+# Função de análise que é acionada quando o botão é clicado
+observeEvent(input$analyze_btn, {
+  req(input$pdf_file)
+  
+  # Extrair texto do PDF
+  tryCatch({
+    pdf_text_content <- pdf_text(input$pdf_file$datapath)
+    full_text <- paste(pdf_text_content, collapse = " ")
+    text_data(full_text)
+    
+    # Processar tokens
+    tokens <- process_text(full_text, input$remove_stop, input$lang)
+    processed_tokens(tokens)
+    
+    # Análise de sentimentos
+    if(input$sentiment_type == "bing") {
+      sent_data <- tokens %>%
+        inner_join(sentiment_bing, by = "word") %>%
+        count(sentiment)
+    } else if(input$sentiment_type == "afinn") {
+      sent_data <- tokens %>%
+        inner_join(sentiment_afinn, by = "word") %>%
+        summarise(
+          score_mean = mean(value, na.rm = TRUE),
+          score_sum = sum(value, na.rm = TRUE),
+          words_count = n()
+        )
+    } else {
+      sent_data <- tokens %>%
+        inner_join(sentiment_nrc, by = "word") %>%
+        count(sentiment)
+    }
+    sentiment_data(sent_data)
+    
+    # Extração de entidades
+    entities <- extract_entities(full_text)
+    entity_data(entities)
+    
+    # Modelagem de tópicos
+    corpus <- Corpus(VectorSource(full_text)) %>%
+      tm_map(content_transformer(tolower)) %>%
+      tm_map(removePunctuation) %>%
+      tm_map(removeNumbers)
+    
+    if(input$remove_stop) {
+      corpus <- tm_map(corpus, removeWords, stopwords_cache[[input$lang]])
+    }
+    
+    corpus <- tm_map(corpus, stripWhitespace)
+    dtm <- DocumentTermMatrix(corpus)
+    dtm <- removeSparseTerms(dtm, 0.95)
+    
+    if(ncol(dtm) >= input$topics_num) {
+      lda <- LDA(dtm, k = input$topics_num, control = list(seed = 1234))
+      topic_model(lda)
+    } else {
+      topic_model(NULL)
+    }
+    
+  }, error = function(e) {
+    showNotification(paste("Erro na análise:", e$message), type = "error")
+  })
+})
+```
+
+Row {data-height=100}
+-------------------------------------
+
+### Resumo do Documento
+
+```{r}
+renderUI({
+  req(text_data())
+  
+  # Contagem básica de estatísticas
+  text <- text_data()
+  word_count <- str_count(text, "\\S+")
+  char_count <- nchar(text)
+  sentence_count <- str_count(text, "[.!?]\\s")
+  
+  fluidRow(
+    column(width = 3,
+      valueBox(formatC(word_count, format="d", big.mark=","), 
+               "Palavras", icon = "fas fa-font", color = "blue")
+    ),
+    column(width = 3,
+      valueBox(formatC(char_count, format="d", big.mark=","), 
+               "Caracteres", icon = "fas fa-keyboard", color = "green")
+    ),
+    column(width = 3,
+      valueBox(formatC(sentence_count, format="d", big.mark=","), 
+               "Frases", icon = "fas fa-align-left", color = "orange")
+    ),
+    column(width = 3,
+      valueBox(formatC(sentence_count > 0 ? word_count / sentence_count : 0, digits = 1), 
+               "Palavras/Frase", icon = "fas fa-calculator", color = "purple")
+    )
+  )
+})
+```
+
+Row {.tabset}
+-------------------------------------
+
+### Texto Extraído
+
+```{r}
+renderUI({
+  req(text_data())
+  
+  fluidRow(
+    column(width = 12,
+      tags$div(
+        class = "panel panel-default",
+        tags$div(class = "panel-heading", "Texto Extraído do PDF"),
+        tags$div(
+          class = "panel-body",
+          style = "max-height: 400px; overflow-y: auto;",
+          tags$pre(
+            style = "white-space: pre-wrap; word-break: break-word;",
+            text_data()
+          )
+        ),
+        tags$div(
+          class = "panel-footer",
+          downloadButton("download_text", "Download do Texto")
+        )
+      )
+    )
+  )
+})
+
+# Servidor para fazer download do texto
+output$download_text <- downloadHandler(
+  filename = function() {
+    paste0("texto-extraido-", format(Sys.time(), "%Y%m%d-%H%M%S"), ".txt")
+  },
+  content = function(file) {
+    writeLines(text_data(), file)
+  }
+)
+```
+
+### Análise de Frequência
+
+```{r}
+renderUI({
+  req(processed_tokens())
+  
+  fluidRow(
+    column(width = 6,
+      withSpinner(plotlyOutput("freq_plot"))
+    ),
+    column(width = 6,
+      withSpinner(DTOutput("freq_table"))
+    )
+  )
+})
+
+output$freq_plot <- renderPlotly({
+  req(processed_tokens())
+  
+  word_counts <- processed_tokens() %>%
+    count(word, sort = TRUE) %>%
+    filter(n >= input$word_min_freq) %>%
+    top_n(20)
+  
+  p <- ggplot(word_counts, aes(reorder(word, n), n, text = paste("Palavra:", word, "<br>Frequência:", n))) +
+    geom_col(aes(fill = n), show.legend = FALSE) +
+    scale_fill_viridis_c() +
+    coord_flip() +
+    labs(x = NULL, y = "Frequência") +
+    theme_minimal() +
+    theme(axis.text = element_text(size = 12))
+  
+  ggplotly(p, tooltip = "text") %>%
+    layout(title = "20 palavras mais frequentes")
+})
+
+output$freq_table <- renderDT({
+  req(processed_tokens())
+  
+  processed_tokens() %>%
+    count(word, sort = TRUE) %>%
+    filter(n >= input$word_min_freq) %>%
+    rename(Palavra = word, Frequência = n) %>%
+    head(100)
+}, options = list(pageLength = 10, searchHighlight = TRUE))
+```
+
+### Nuvem de Palavras
+
+```{r}
+renderPlot({
+  req(processed_tokens())
+  
+  word_counts <- processed_tokens() %>%
+    count(word, sort = TRUE) %>%
+    filter(n >= input$word_min_freq) %>%
+    top_n(100)
+  
+  # Usando ggwordcloud para uma nuvem de palavras mais avançada
+  ggplot(word_counts, aes(label = word, size = n, color = n)) +
+    geom_text_wordcloud(rm_outside = TRUE) +
+    scale_size_area(max_size = 15) +
+    scale_color_viridis_c() +
+    theme_minimal() +
+    labs(title = "Nuvem de Palavras")
+}, height = 500)
+```
+
+### Análise de Sentimentos
+
+```{r}
+renderUI({
+  req(sentiment_data())
+  
+  if (input$sentiment_type == "bing") {
+    fluidRow(
+      column(width = 6,
+        withSpinner(plotOutput("sentiment_plot"))
+      ),
+      column(width = 6,
+        withSpinner(plotOutput("sentiment_words"))
+      )
+    )
+  } else if (input$sentiment_type == "afinn") {
+    fluidRow(
+      column(width = 6,
+        withSpinner(plotOutput("sentiment_score"))
+      ),
+      column(width = 6,
+        valueBoxOutput("sentiment_summary", width = 12)
+      )
+    )
+  } else {  # nrc
+    fluidRow(
+      column(width = 12,
+        withSpinner(plotOutput("sentiment_emotions"))
+      )
+    )
+  }
+})
+
+# Plot para sentimentos Bing (positivo/negativo)
+output$sentiment_plot <- renderPlot({
+  req(sentiment_data())
+  req(input$sentiment_type == "bing")
+  
+  # Verificar se há dados de sentimento
+  if (nrow(sentiment_data()) == 0) {
+    # Criar um gráfico vazio com mensagem
+    p <- ggplot() + 
+      annotate("text", x = 0.5, y = 0.5, label = "Sem dados de sentimento disponíveis") +
+      theme_void() +
+      xlim(0, 1) + ylim(0, 1)
+    return(p)
+  }
+  
+  ggplot(sentiment_data(), aes(x = sentiment, y = n, fill = sentiment)) +
+    geom_col(show.legend = FALSE) +
+    geom_text(aes(label = n), vjust = -0.5, size = 5) +
+    scale_fill_manual(values = c("positive" = "#2ECC71", "negative" = "#E74C3C")) +
+    labs(title = "Distribuição de Sentimentos", x = NULL, y = "Contagem") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(size = 12, face = "bold"))
+})
+
+# Top palavras por sentimento para Bing
+output$sentiment_words <- renderPlot({
+  req(processed_tokens())
+  req(input$sentiment_type == "bing")
+  
+  sentiment_words <- processed_tokens() %>%
+    inner_join(sentiment_bing, by = "word") %>%
+    count(word, sentiment, sort = TRUE) %>%
+    group_by(sentiment) %>%
+    top_n(10) %>%
+    ungroup() %>%
+    mutate(word = reorder_within(word, n, sentiment))
+  
+  ggplot(sentiment_words, aes(word, n, fill = sentiment)) +
+    geom_col(show.legend = FALSE) +
+    facet_wrap(~ sentiment, scales = "free_y") +
+    scale_x_reordered() +
+    scale_fill_manual(values = c("positive" = "#2ECC71", "negative" = "#E74C3C")) +
+    coord_flip() +
+    labs(title = "Top Palavras por Sentimento", x = NULL, y = "Frequência") +
+    theme_minimal()
+})
+
+# Gráfico de pontuação para AFINN
+output$sentiment_score <- renderPlot({
+  req(processed_tokens())
+  req(input$sentiment_type == "afinn")
+  
+  # Análise por palavras
+  word_scores <- processed_tokens() %>%
+    inner_join(sentiment_afinn, by = "word") %>%
+    group_by(word) %>%
+    summarise(score = sum(value), count = n()) %>%
+    ungroup() %>%
+    mutate(impact = score * count) %>%
+    arrange(desc(abs(impact))) %>%
+    head(20) %>%
+    mutate(word = reorder(word, impact))
+  
+  ggplot(word_scores, aes(x = word, y = impact, fill = impact > 0)) +
+    geom_col() +
+    scale_fill_manual(values = c("TRUE" = "#2ECC71", "FALSE" = "#E74C3C"), 
+                     labels = c("TRUE" = "Positivo", "FALSE" = "Negativo"),
+                     name = "Sentimento") +
+    coord_flip() +
+    labs(title = "Top 20 palavras por impacto de sentimento", x = NULL, y = "Impacto (score × frequência)") +
+    theme_minimal()
+})
+
+  # Resumo do sentimento AFINN
+output$sentiment_summary <- renderValueBox({
+  req(sentiment_data())
+  req(input$sentiment_type == "afinn")
+  
+  score_mean <- sentiment_data()$score_mean
+  score_sum <- sentiment_data()$score_sum
+  
+  if(is.na(score_mean)) {
+    sentiment_msg <- "Não foi possível calcular o sentimento"
+    color <- "yellow"
+  } else if(score_mean > 0.2) {
+    sentiment_msg <- "Predominantemente Positivo"
+    color <- "green"
+  } else if(score_mean < -0.2) {
+    sentiment_msg <- "Predominantemente Negativo"
+    color <- "red"
+  } else {
+    sentiment_msg <- "Neutro"
+    color <- "blue"
+  }
+  
+  valueBox(
+    value = round(score_mean, 2),
+    subtitle = paste0(sentiment_msg, " (Soma: ", round(score_sum, 1), ")"),
+    icon = "fas fa-balance-scale",
+    color = color
+  )
+})
+
+# Gráfico de emoções para NRC
+output$sentiment_emotions <- renderPlot({
+  req(sentiment_data())
+  req(input$sentiment_type == "nrc")
+  
+  # Cores específicas para cada emoção
+  emotion_colors <- c(
+    "anger" = "#e74c3c",      # vermelho
+    "anticipation" = "#f39c12", # laranja
+    "disgust" = "#8e44ad",    # roxo
+    "fear" = "#7f8c8d",       # cinza
+    "joy" = "#f1c40f",        # amarelo
+    "sadness" = "#3498db",    # azul
+    "surprise" = "#2ecc71",   # verde
+    "trust" = "#1abc9c",      # turquesa
+    "negative" = "#c0392b",   # vermelho escuro
+    "positive" = "#27ae60"    # verde escuro
+  )
+  
+  # Tradução das emoções
+  emotion_labels <- c(
+    "anger" = "Raiva",
+    "anticipation" = "Antecipação",
+    "disgust" = "Nojo",
+    "fear" = "Medo",
+    "joy" = "Alegria", 
+    "sadness" = "Tristeza",
+    "surprise" = "Surpresa",
+    "trust" = "Confiança",
+    "negative" = "Negativo",
+    "positive" = "Positivo"
+  )
+  
+  # Reordenar com base na frequência
+  sentiment_data() %>%
+    mutate(
+      sentiment_pt = factor(sentiment, 
+                           levels = names(emotion_labels), 
+                           labels = emotion_labels[names(emotion_labels)]),
+      sentiment_pt = reorder(sentiment_pt, n)
+    ) %>%
+    ggplot(aes(x = sentiment_pt, y = n, fill = sentiment)) +
+    geom_col() +
+    coord_flip() +
+    scale_fill_manual(values = emotion_colors, guide = "none") +
+    labs(title = "Distribuição de Emoções", x = NULL, y = "Contagem") +
+    theme_minimal() +
+    theme(axis.text.y = element_text(size = 12, face = "bold"))
+})
+```
+
+### Modelagem de Tópicos
+
+```{r}
+renderUI({
+  req(input$analyze_btn)
+  
+  if (is.null(topic_model())) {
+    return(tags$div(
+      class = "alert alert-warning",
+      tags$h4("Aviso"),
+      tags$p("Não foi possível criar o modelo de tópicos. Possíveis razões:"),
+      tags$ul(
+        tags$li("O documento possui texto insuficiente"),
+        tags$li("Muitas palavras foram filtradas pelos stopwords"),
+        tags$li("O número de tópicos é maior que o número de termos distintos")
+      )
+    ))
+  } else {
+    fluidRow(
+      column(width = 12,
+        withSpinner(plotOutput("topic_plot", height = "500px"))
+      )
+    )
+  }
+})
+
+output$topic_plot <- renderPlot({
+  req(topic_model())
+  
+  # Extrair os principais termos de cada tópico
+  topics_beta <- tidy(topic_model(), matrix = "beta")
+  
+  top_terms <- topics_beta %>%
+    group_by(topic) %>%
+    top_n(10, beta) %>%
+    ungroup() %>%
+    arrange(topic, -beta)
+  
+  # Gráfico de tópicos aprimorado
+  top_terms %>%
+    mutate(term = reorder_within(term, beta, topic)) %>%
+    ggplot(aes(term, beta, fill = factor(topic))) +
+    geom_col(show.legend = FALSE) +
+    facet_wrap(~ topic, scales = "free") +
+    coord_flip() +
+    scale_x_reordered() +
+    scale_fill_viridis_d() +
+    labs(title = "Principais Termos por Tópico", x = NULL, y = "Beta") +
+    theme_minimal() +
+    theme(strip.background = element_rect(fill = "#e9ecef"),
+          strip.text = element_text(face = "bold"))
+})
+```
+
+### Entidades & Referências
+
+```{r}
+renderUI({
+  req(entity_data())
+  
+  entities <- entity_data()
+  
+  fluidRow(
+    column(width = 4,
+      tags$div(
+        class = "panel panel-info",
+        tags$div(class = "panel-heading", tags$h4("E-mails Detectados")),
+        tags$div(
+          class = "panel-body",
+          if(length(entities$emails) > 0) {
+            tags$ul(
+              lapply(entities$emails, function(email) {
+                tags$li(email)
+              })
+            )
+          } else {
+            tags$p("Nenhum e-mail detectado.")
+          }
+        )
+      )
+    ),
+    column(width = 4,
+      tags$div(
+        class = "panel panel-success",
+        tags$div(class = "panel-heading", tags$h4("URLs Detectadas")),
+        tags$div(
+          class = "panel-body",
+          if(length(entities$urls) > 0) {
+            tags$ul(
+              lapply(entities$urls, function(url) {
+                tags$li(tags$a(href = url, target = "_blank", url))
+              })
+            )
+          } else {
+            tags$p("Nenhuma URL detectada.")
+          }
+        )
+      )
+    ),
+    column(width = 4,
+      tags$div(
+        class = "panel panel-warning",
+        tags$div(class = "panel-heading", tags$h4("Datas Detectadas")),
+        tags$div(
+          class = "panel-body",
+          if(length(entities$dates) > 0) {
+            tags$ul(
+              lapply(entities$dates, function(date) {
+                tags$li(date)
+              })
+            )
+          } else {
+            tags$p("Nenhuma data detectada.")
+          }
+        )
+      )
+    )
+  )
+})
+```
+
+Row {data-height=150}
+-------------------------------------
+
+### Informações e Download da Análise
+
+```{r}
+renderUI({
+  fluidRow(
+    column(width = 8,
+      tags$div(
+        style = "padding: 15px; background-color: #f8f9fa; border-radius: 5px;",
+        tags$h4("Sobre esta Ferramenta"),
+        tags$p("Esta aplicação realiza análise automática de documentos PDF com processamento de linguagem natural."),
+        tags$p("Utilize as diferentes abas para explorar vários aspectos do texto como frequência de palavras, 
+               sentimentos, tópicos e entidades detectadas."),
+        tags$p(tags$small("* Os resultados são aproximados e dependem da qualidade de extração do texto."))
+      )
+    ),
+    column(width = 4,
+      tags$div(
+        style = "text-align: center; padding-top: 20px;",
+        downloadButton("download_report", "Baixar Relatório Completo", 
+                       class = "btn-lg btn-success",
+                       icon = icon("file-download"))
+      )
+    )
+  )
+})
+
+# Download do relatório
+output$download_report <- downloadHandler(
+  filename = function() {
+    paste0("analise-pdf-", format(Sys.time(), "%Y%m%d-%H%M%S"), ".html")
+  },
+  content = function(file) {
+    # Aqui poderia ser implementada uma funcionalidade para gerar um relatório HTML completo
+    # usando rmarkdown::render() ou outro método
+    
+    # Por enquanto, apenas uma implementação parcial
+    html_content <- paste0(
+      "<!DOCTYPE html>
+      <html>
+      <head>
+        <title>Relatório de Análise PDF</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 40px; }
+          h1 { color: #2c3e50; }
+          .section { margin-bottom: 30px; }
+        </style>
+      </head>
+      <body>
+        <h1>Relatório de Análise de Documento PDF</h1>
+        <div class='section'>
+          <h2>Informações do Documento</h2>
+          <p>Nome do arquivo: ", input$pdf_file$name, "</p>
+          <p>Data da análise: ", format(Sys.time(), "%d/%m/%Y %H:%M:%S"), "</p>
+        </div>
+        <div class='section'>
+          <h2>Resumo</h2>
+          <p>Este é um relatório exportado da ferramenta de Análise Automatizada de Documentos em PDF.</p>
+          <p>Para visualizar a análise completa e interativa, utilize a aplicação Shiny.</p>
+        </div>
+      </body>
+      </html>"
+    )
+    
+    writeLines(html_content, file)
+  }
+)
+```
