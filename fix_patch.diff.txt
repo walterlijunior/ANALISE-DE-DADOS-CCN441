@@ -1,0 +1,16 @@
+diff --git a/analisador_texto_pdf.Rmd b/analisador_texto_pdf.Rmd
+index abc123..def456 100644
+--- a/analisador_texto_pdf.Rmd
++++ b/analisador_texto_pdf.Rmd
+@@ -303,7 +303,14 @@ renderUI({
+   req(text_data())  # Verifica se text_data() não é NULL
+   
+   if (is.null(text_data())) {  # Caso os dados não estejam carregados
+-    return(NULL)
++    return(tags$div(
++      class = "alert alert-warning",
++      tags$p("Nenhum texto disponível para análise.")
++    ))
+   }
+   
+   # Contagem básica de estatísticas
