@@ -1,0 +1,429 @@
+---
+title: "Guia Básico de Sintaxe do R"
+author: "Seu Nome"
+date: "08/05/2025"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introdução ao R
+
+Este documento explica a sintaxe básica da linguagem R de maneira simples e direta, com exemplos práticos em formato R Markdown (Rmd).
+
+## O que é R Markdown?
+
+R Markdown é um formato que permite combinar texto e código R no mesmo documento. Quando compilado, o código é executado e os resultados são mostrados junto com o texto, o que é útil para análises, relatórios e apresentações.
+
+# Criando Variáveis no R
+
+No R, você pode criar variáveis e atribuir valores usando o operador de atribuição `<-` (preferencial) ou `=`.
+
+```{r variaveis}
+# Criando variáveis numéricas
+x <- 5                # Forma preferida de atribuição
+y = 10                # Também funciona
+
+# Mostrando os valores
+print(x)
+print(y)
+
+# Operações com variáveis
+z <- x + y
+print(z)
+```
+
+## Variáveis de texto (strings)
+
+```{r strings}
+# Criando variáveis de texto
+nome <- "Maria"
+sobrenome <- "Silva"
+
+# Concatenando textos
+nome_completo <- paste(nome, sobrenome)
+print(nome_completo)
+```
+
+## Vetores
+
+Vetores são coleções de elementos do mesmo tipo.
+
+```{r vetores}
+# Vetor numérico
+numeros <- c(1, 2, 3, 4, 5)
+print(numeros)
+
+# Vetor de texto
+nomes <- c("Ana", "João", "Maria", "Pedro")
+print(nomes)
+
+# Operações com vetores
+numeros_dobro <- numeros * 2
+print(numeros_dobro)
+
+# Acessando elementos (R começa do índice 1, não 0)
+primeiro_nome <- nomes[1]
+print(primeiro_nome)
+```
+
+# Entrada de Dados no R
+
+## Leitura de entrada do usuário
+
+```{r eval=FALSE}
+# Solicitar entrada do usuário (não é executado no knit)
+nome <- readline("Digite seu nome: ")
+idade <- as.numeric(readline("Digite sua idade: "))
+```
+
+## Importação de arquivos
+
+```{r eval=FALSE}
+# Importar arquivo CSV
+dados <- read.csv("arquivo.csv")
+
+# Visualizar as primeiras linhas
+head(dados)
+```
+
+Para arquivos Excel, você precisa do pacote readxl:
+
+```{r eval=FALSE}
+# Instalar o pacote (se ainda não estiver instalado)
+# install.packages("readxl")
+
+# Carregar o pacote
+library(readxl)
+
+# Importar arquivo Excel
+dados_excel <- read_excel("arquivo.xlsx")
+
+# Visualizar as primeiras linhas
+head(dados_excel)
+```
+
+# Tipos de Dados Básicos
+
+R possui diversos tipos de dados fundamentais:
+
+```{r tipos_dados}
+# Numérico (double)
+num <- 42.5
+print(num)
+print(class(num))
+
+# Inteiro
+int <- 42L        # O "L" indica que é inteiro
+print(int)
+print(class(int))
+
+# Texto (string/character)
+texto <- "Olá mundo"
+print(texto)
+print(class(texto))
+
+# Lógico (booleano)
+verdadeiro <- TRUE
+falso <- FALSE
+print(verdadeiro)
+print(class(verdadeiro))
+
+# Fator (categoria)
+genero <- factor(c("M", "F", "F", "M"))
+print(genero)
+print(class(genero))
+print(levels(genero))  # Categorias únicas
+```
+
+# Estruturas de Dados
+
+## Vetores
+Já vimos acima. São coleções unidimensionais de elementos do mesmo tipo.
+
+## Matrizes
+Estruturas bidimensionais com elementos do mesmo tipo.
+
+```{r matrizes}
+# Criar matriz 3x3 com números de 1 a 9
+m <- matrix(1:9, nrow=3, ncol=3)
+print(m)
+
+# Acessar elementos
+print(m[1, 2])  # Elemento na linha 1, coluna 2
+```
+
+## Listas
+Podem conter diferentes tipos de dados.
+
+```{r listas}
+# Criar uma lista
+pessoa <- list(
+  nome = "João",
+  idade = 30,
+  notas = c(8, 9, 7),
+  ativo = TRUE
+)
+
+# Ver a lista
+print(pessoa)
+
+# Acessar elementos da lista
+print(pessoa$nome)      # Usando $
+print(pessoa[["idade"]]) # Usando [[]]
+print(pessoa$notas[2])  # Segundo elemento do vetor notas
+```
+
+## Data Frames
+Tabelas de dados onde cada coluna pode ter um tipo diferente.
+
+```{r dataframes}
+# Criar um data frame
+alunos <- data.frame(
+  nome = c("Ana", "Carlos", "Maria"),
+  idade = c(25, 30, 28),
+  altura = c(1.65, 1.80, 1.70),
+  aprovado = c(TRUE, FALSE, TRUE)
+)
+
+# Ver o data frame
+print(alunos)
+
+# Dimensões
+print(dim(alunos))  # Linhas e colunas
+
+# Resumo estatístico
+summary(alunos)
+
+# Acessar colunas
+print(alunos$nome)     # Todos os nomes
+print(alunos[, "idade"]) # Todas as idades
+
+# Acessar linhas
+print(alunos[1, ])     # Primeira linha
+
+# Filtragem
+alunos_aprovados <- alunos[alunos$aprovado == TRUE, ]
+print(alunos_aprovados)
+```
+
+# Operações Básicas
+
+## Operações Matemáticas
+
+```{r operacoes}
+# Operações básicas
+soma <- 5 + 3
+subtracao <- 10 - 2
+multiplicacao <- 4 * 3
+divisao <- 10 / 2
+potencia <- 2^3
+modulo <- 7 %% 3  # Resto da divisão
+
+# Resultados
+print(paste("Soma:", soma))
+print(paste("Subtração:", subtracao))
+print(paste("Multiplicação:", multiplicacao))
+print(paste("Divisão:", divisao))
+print(paste("Potência:", potencia))
+print(paste("Módulo:", modulo))
+```
+
+## Operações Lógicas
+
+```{r logicas}
+# Comparações
+maior <- 5 > 3
+menor <- 2 < 1
+igual <- 4 == 4
+diferente <- 5 != 5
+
+# Operadores lógicos
+and <- TRUE & FALSE
+or <- TRUE | FALSE
+not <- !TRUE
+
+# Resultados
+print(paste("5 > 3:", maior))
+print(paste("2 < 1:", menor))
+print(paste("4 == 4:", igual))
+print(paste("5 != 5:", diferente))
+print(paste("TRUE & FALSE:", and))
+print(paste("TRUE | FALSE:", or))
+print(paste("!TRUE:", not))
+```
+
+# Estruturas de Controle
+
+## Condicionais (if, else)
+
+```{r condicionais}
+x <- 15
+
+# Estrutura if-else
+if (x > 10) {
+  resultado <- "x é maior que 10"
+} else if (x == 10) {
+  resultado <- "x é igual a 10"
+} else {
+  resultado <- "x é menor que 10"
+}
+
+print(resultado)
+
+# Operador ternário (ifelse)
+y <- 5
+resultado2 <- ifelse(y > 10, "maior que 10", "menor ou igual a 10")
+print(resultado2)
+```
+
+## Loops (for, while)
+
+### Loop for
+
+```{r for_loop}
+# Loop for básico
+for (i in 1:5) {
+  print(paste("Iteração:", i))
+}
+
+# Loop for com vetor
+frutas <- c("maçã", "banana", "laranja")
+for (fruta in frutas) {
+  print(paste("Fruta:", fruta))
+}
+```
+
+### Loop while
+
+```{r while_loop}
+# Loop while
+contador <- 1
+while (contador <= 5) {
+  print(paste("Contador:", contador))
+  contador <- contador + 1
+}
+```
+
+# Funções no R
+
+Funções são blocos de código reutilizáveis que executam tarefas específicas.
+
+```{r funcoes}
+# Definir uma função
+calcular_media <- function(valores) {
+  soma <- sum(valores)
+  quantidade <- length(valores)
+  media <- soma / quantidade
+  return(media)
+}
+
+# Usar a função
+notas <- c(7, 8, 9, 6, 10)
+media_notas <- calcular_media(notas)
+print(paste("A média das notas é:", media_notas))
+
+# Função com múltiplos parâmetros
+calcular_imc <- function(peso, altura) {
+  imc <- peso / (altura^2)
+  return(imc)
+}
+
+imc_pessoa <- calcular_imc(70, 1.75)
+print(paste("O IMC é:", round(imc_pessoa, 2)))
+```
+
+# Gráficos Básicos no R
+
+R é conhecido por suas capacidades de visualização de dados:
+
+```{r graficos}
+# Dados de exemplo
+x <- 1:10
+y <- x^2
+
+# Gráfico de dispersão
+plot(x, y, main="Gráfico de x² vs x", 
+     xlab="x", ylab="x²", 
+     col="blue", pch=19)
+
+# Histograma
+dados <- rnorm(1000)  # 1000 números aleatórios
+hist(dados, main="Histograma", 
+     xlab="Valores", col="lightblue",
+     border="black")
+
+# Gráfico de barras
+categorias <- c("A", "B", "C", "D")
+valores <- c(25, 40, 15, 20)
+barplot(valores, names.arg=categorias, 
+        main="Gráfico de Barras",
+        col=rainbow(4))
+```
+
+# Pacotes no R
+
+R possui um vasto ecossistema de pacotes para diversas finalidades.
+
+```{r pacotes, eval=FALSE}
+# Instalar pacote (executar apenas se necessário)
+# install.packages("ggplot2")
+
+# Carregar pacote
+library(ggplot2)
+
+# Exemplo com ggplot2
+ggplot(data=data.frame(x=x, y=y), aes(x=x, y=y)) +
+  geom_point(color="red", size=3) +
+  geom_line() +
+  labs(title="Gráfico com ggplot2",
+       x="Eixo X", y="Eixo Y") +
+  theme_minimal()
+```
+
+# Dicas Adicionais
+
+## Ajuda Integrada
+Para obter ajuda sobre uma função ou pacote:
+
+```{r ajuda, eval=FALSE}
+?mean         # Ajuda sobre a função mean
+help(plot)    # Outra forma de obter ajuda
+```
+
+## Diretório de Trabalho
+
+```{r diretorio, eval=FALSE}
+# Ver diretório atual
+getwd()
+
+# Mudar diretório
+setwd("C:/MeusProjetos")  # No Windows
+# setwd("/home/usuario/projetos")  # No Linux/Mac
+```
+
+## Salvando Dados
+
+```{r salvar, eval=FALSE}
+# Salvar um objeto
+dados <- data.frame(x=1:5, y=6:10)
+save(dados, file="meus_dados.RData")
+
+# Carregar objeto salvo
+load("meus_dados.RData")
+
+# Salvar em CSV
+write.csv(dados, "meus_dados.csv", row.names=FALSE)
+```
+
+# Conclusão
+
+Este guia cobre os fundamentos da sintaxe do R. A linguagem R possui muitos recursos adicionais e pacotes especializados que expandem suas funcionalidades para análise estatística, aprendizado de máquina, visualização de dados e muito mais.
+
+Para aprender mais, explore a documentação oficial do R e as vinhetas dos pacotes que você utilizar.
