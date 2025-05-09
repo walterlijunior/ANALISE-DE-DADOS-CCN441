@@ -421,9 +421,3 @@ load("meus_dados.RData")
 # Salvar em CSV
 write.csv(dados, "meus_dados.csv", row.names=FALSE)
 ```
-
-# Conclusão
-
-Este guia cobre os fundamentos da sintaxe do R. A linguagem R possui muitos recursos adicionais e pacotes especializados que expandem suas funcionalidades para análise estatística, aprendizado de máquina, visualização de dados e muito mais.
-
-Para aprender mais, explore a documentação oficial do R e as vinhetas dos pacotes que você utilizar.
